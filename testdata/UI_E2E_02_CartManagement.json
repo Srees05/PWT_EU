@@ -1,0 +1,15 @@
+{
+  "login": {
+    "username": "standard_user",
+    "password": "secret_sauce"
+  },
+
+  "products": {
+    "product1": "Sauce Labs Backpack",
+    "product2": "Sauce Labs Bike Light"
+  },
+
+  "sort": {
+    "option": "Price (low to high)"
+  }
+}
