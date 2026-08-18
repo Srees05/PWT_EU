@@ -16,19 +16,13 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Build Docker Image') {
             steps {
-                bat 'npm ci'
+                bat 'docker build -t pwt-eu .'
             }
         }
 
-        stage('Install Playwright Browser') {
-            steps {
-                bat "npx playwright install ${params.BROWSER}"
-            }
-        }
-
-        stage('Run Tests') {
+        stage('Run Tests in Docker') {
             steps {
                 script {
                     def grepOption = ''
@@ -37,11 +31,17 @@ pipeline {
                         grepOption = "--grep @${params.SUITE}"
                     }
 
-                    withEnv(["ENV=${params.ENV}"]) {
-                        bat """
-                        npx playwright test --project=${params.BROWSER} ${grepOption} --workers=${params.WORKERS}
-                        """
-                    }
+                    bat """
+                    docker run --rm ^
+                    -e ENV=${params.ENV} ^
+                    -v "%CD%\\reports:/app/reports" ^
+                    -v "%CD%\\results:/app/results" ^
+                    pwt-eu ^
+                    npx playwright test ^
+                    --project=${params.BROWSER} ^
+                    ${grepOption} ^
+                    --workers=${params.WORKERS}
+                    """
                 }
             }
         }
