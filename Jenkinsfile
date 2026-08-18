@@ -23,38 +23,38 @@ pipeline {
         }
 
         stage('Run Tests in Docker') {
-    steps {
-        script {
-            def grepOption = ''
+            steps {
+                script {
+                    def grepOption = ''
 
-            if (params.SUITE != 'all') {
-                grepOption = "--grep @${params.SUITE}"
+                    if (params.SUITE != 'all') {
+                        grepOption = "--grep @${params.SUITE}"
+                    }
+
+                    bat """
+                    docker rm -f pwt-eu-run 2>nul || ver > nul
+
+                    docker run --name pwt-eu-run ^
+                    -e ENV=${params.ENV} ^
+                    pwt-eu ^
+                    npx playwright test ^
+                    --project=${params.BROWSER} ^
+                    ${grepOption} ^
+                    --workers=${params.WORKERS}
+                    """
+                }
             }
-
-            bat """
-            docker rm -f pwt-eu-run 2>nul || exit /b 0
-
-            docker run --name pwt-eu-run ^
-            -e ENV=${params.ENV} ^
-            pwt-eu ^
-            npx playwright test ^
-            --project=${params.BROWSER} ^
-            ${grepOption} ^
-            --workers=${params.WORKERS}
-            """
         }
-    }
-}
     }
 
     post {
-    always {
-        bat 'docker cp pwt-eu-run:/app/reports ./reports || exit /b 0'
-        bat 'docker cp pwt-eu-run:/app/results ./results || exit /b 0'
-        bat 'docker rm -f pwt-eu-run || exit /b 0'
+        always {
+            bat 'docker cp pwt-eu-run:/app/reports ./reports 2>nul || ver > nul'
+            bat 'docker cp pwt-eu-run:/app/results ./results 2>nul || ver > nul'
+            bat 'docker rm -f pwt-eu-run 2>nul || ver > nul'
 
-        archiveArtifacts artifacts: 'reports/**/*, results/**/*',
-                         allowEmptyArchive: true
+            archiveArtifacts artifacts: 'reports/**/*, results/**/*',
+                             allowEmptyArchive: true
+        }
     }
-}
 }
