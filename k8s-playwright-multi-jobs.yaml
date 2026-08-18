@@ -16,16 +16,16 @@ spec:
 
           env:
             - name: ENV
-              value: "qa"
+              value: "__ENV__"
 
           command:
             - /bin/bash
             - -c
             - |
               npx playwright test \
-                --project=chromium \
+                --project=__BROWSER__ \
                 --grep "@smoke" \
-                --workers=1 \
+                --workers=__WORKERS__ \
                 --reporter=blob
 
               TEST_EXIT=$?
@@ -59,16 +59,16 @@ spec:
 
           env:
             - name: ENV
-              value: "qa"
+              value: "__ENV__"
 
           command:
             - /bin/bash
             - -c
             - |
               npx playwright test \
-                --project=chromium \
+                --project=__BROWSER__ \
                 --grep "@regression" \
-                --workers=1 \
+                --workers=__WORKERS__ \
                 --reporter=blob
 
               TEST_EXIT=$?
