@@ -77,8 +77,7 @@ pipeline {
         }
 
         // -------------------------------------------------
-        // 6. Replace Kubernetes YAML placeholders
-        //    with Jenkins parameter values
+        // 6. Generate runtime Kubernetes configuration
         // -------------------------------------------------
         stage('Prepare Kubernetes Config') {
             steps {
@@ -97,7 +96,7 @@ pipeline {
         }
 
         // -------------------------------------------------
-        // 7. Create Smoke + Regression Kubernetes jobs
+        // 7. Start Smoke + Regression Kubernetes jobs
         // -------------------------------------------------
         stage('Run Tests in Kubernetes') {
             steps {
@@ -106,7 +105,7 @@ pipeline {
         }
 
         // -------------------------------------------------
-        // 8. Wait until Playwright execution is finished
+        // 8. Wait until Playwright execution has finished
         // -------------------------------------------------
         stage('Wait for Test Completion') {
             steps {
@@ -139,7 +138,7 @@ pipeline {
         }
 
         // -------------------------------------------------
-        // 9. Copy Blob reports from Kubernetes Pods
+        // 9. Collect Blob Reports while Pods are alive
         // -------------------------------------------------
         stage('Collect Blob Reports') {
             steps {
@@ -176,7 +175,7 @@ pipeline {
         }
 
         // -------------------------------------------------
-        // 10. Merge Smoke + Regression Blob reports
+        // 10. Merge Smoke + Regression Blob Reports
         // -------------------------------------------------
         stage('Merge Playwright Reports') {
             steps {
@@ -198,27 +197,84 @@ pipeline {
                 '''
             }
         }
+
+        // -------------------------------------------------
+        // 11. Check actual Kubernetes test results
+        // -------------------------------------------------
+        stage('Validate Test Results') {
+            steps {
+                script {
+
+                    // Wait until the temporary artifact-copy window ends
+                    // and Kubernetes records the final Job result.
+                    sleep(time: 30, unit: 'SECONDS')
+
+                    def smokeComplete = bat(
+                        script: '@kubectl get job pwt-eu-smoke-job -o jsonpath="{.status.succeeded}"',
+                        returnStdout: true
+                    ).trim()
+
+                    def smokeFailed = bat(
+                        script: '@kubectl get job pwt-eu-smoke-job -o jsonpath="{.status.failed}"',
+                        returnStdout: true
+                    ).trim()
+
+                    def regressionComplete = bat(
+                        script: '@kubectl get job pwt-eu-regression-job -o jsonpath="{.status.succeeded}"',
+                        returnStdout: true
+                    ).trim()
+
+                    def regressionFailed = bat(
+                        script: '@kubectl get job pwt-eu-regression-job -o jsonpath="{.status.failed}"',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Smoke succeeded     : ${smokeComplete}"
+                    echo "Smoke failed        : ${smokeFailed}"
+                    echo "Regression succeeded: ${regressionComplete}"
+                    echo "Regression failed   : ${regressionFailed}"
+
+                    if (smokeFailed == '1' || regressionFailed == '1') {
+                        error('Playwright test execution failed in Kubernetes.')
+                    }
+
+                    if (smokeComplete != '1' || regressionComplete != '1') {
+                        error('Kubernetes jobs did not complete successfully.')
+                    }
+
+                    echo 'Smoke and Regression suites PASSED.'
+                }
+            }
+        }
     }
 
     // -------------------------------------------------
-    // 11. Save reports as Jenkins artifacts
+    // 12. Publish reports and clean Kubernetes resources
     // -------------------------------------------------
     post {
         always {
 
-        archiveArtifacts(
-            artifacts: 'playwright-report/**/*, all-blob-reports/**/*, merged-blobs/**/*',
-            allowEmptyArchive: true
-        )
+            archiveArtifacts(
+                artifacts: 'playwright-report/**/*, all-blob-reports/**/*, merged-blobs/**/*',
+                allowEmptyArchive: true
+            )
 
-        publishHTML([
-            reportDir: 'playwright-report',
-            reportFiles: 'index.html',
-            reportName: 'Playwright HTML Report',
-            keepAll: true,
-            alwaysLinkToLastBuild: true,
-            allowMissing: true
-        ])
-    }
+            publishHTML([
+                reportDir: 'playwright-report',
+                reportFiles: 'index.html',
+                reportName: 'Playwright HTML Report',
+                keepAll: true,
+                alwaysLinkToLastBuild: true,
+                allowMissing: true
+            ])
+
+            echo 'Cleaning Kubernetes Jobs...'
+
+            bat '''
+            kubectl delete job pwt-eu-smoke-job pwt-eu-regression-job --ignore-not-found=true
+            '''
+
+            echo 'Kubernetes cleanup completed.'
+        }
     }
 }
