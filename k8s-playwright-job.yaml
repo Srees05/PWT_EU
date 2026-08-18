@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+
+metadata:
+  name: pwt-eu-job
+
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: pwt-eu
+          image: localhost:5000/pwt-eu:latest
+          imagePullPolicy: IfNotPresent
+
+          env:
+            - name: ENV
+              value: "qa"
+
+          command:
+            - /bin/bash
+            - -c
+            - |
+              npx playwright test \
+                --project=chromium \
+                --grep "@e2e" \
+                --workers=2 \
+                --reporter=blob
+
+              TEST_EXIT=$?
+
+              echo "Playwright execution completed."
+              echo "Keeping Pod alive for 5 minutes to collect blob report..."
+
+              sleep 300
+
+              exit $TEST_EXIT
+
+  backoffLimit: 0

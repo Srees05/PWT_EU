@@ -1,0 +1,83 @@
+apiVersion: batch/v1
+kind: Job
+
+metadata:
+  name: pwt-eu-smoke-job
+
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: pwt-eu-smoke
+          image: localhost:5000/pwt-eu:latest
+          imagePullPolicy: IfNotPresent
+
+          env:
+            - name: ENV
+              value: "qa"
+
+          command:
+            - /bin/bash
+            - -c
+            - |
+              npx playwright test \
+                --project=chromium \
+                --grep "@smoke" \
+                --workers=1 \
+                --reporter=blob
+
+              TEST_EXIT=$?
+
+              echo "Smoke execution completed."
+              echo "Keeping Pod alive for artifact collection..."
+
+              sleep 300
+
+              exit $TEST_EXIT
+
+  backoffLimit: 0
+
+---
+
+apiVersion: batch/v1
+kind: Job
+
+metadata:
+  name: pwt-eu-regression-job
+
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: pwt-eu-regression
+          image: localhost:5000/pwt-eu:latest
+          imagePullPolicy: IfNotPresent
+
+          env:
+            - name: ENV
+              value: "qa"
+
+          command:
+            - /bin/bash
+            - -c
+            - |
+              npx playwright test \
+                --project=chromium \
+                --grep "@regression" \
+                --workers=1 \
+                --reporter=blob
+
+              TEST_EXIT=$?
+
+              echo "Regression execution completed."
+              echo "Keeping Pod alive for artifact collection..."
+
+              sleep 300
+
+              exit $TEST_EXIT
+
+  backoffLimit: 0
