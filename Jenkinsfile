@@ -16,6 +16,12 @@ pipeline {
             }
         }
 
+        stage('Verify Kubernetes') {
+            steps {
+                bat 'kubectl get nodes'
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
                 bat 'docker build -t pwt-eu .'
