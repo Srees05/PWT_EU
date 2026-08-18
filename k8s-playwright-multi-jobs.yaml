@@ -76,7 +76,7 @@ spec:
               echo "Regression execution completed."
               echo "Keeping Pod alive for artifact collection..."
 
-              sleep 300
+              sleep 25
 
               exit $TEST_EXIT
 
