@@ -1,6 +1,8 @@
 pipeline {
     agent any
-
+    environment {
+    KUBECONFIG = 'C:\\Users\\sreek\\.kube\\config'
+}
     parameters {
         choice(name: 'ENV', choices: ['qa', 'dev', 'prod'], description: 'Select environment')
         choice(name: 'BROWSER', choices: ['chromium', 'firefox', 'webkit'], description: 'Select browser')
