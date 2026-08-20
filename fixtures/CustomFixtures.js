@@ -1,5 +1,8 @@
 const { test: base, expect } = require('@playwright/test');
 
+const fs = require('fs');
+const path = require('path');
+
 const LoginPage = require('../pages/LoginPage');
 const ProductsPage = require('../pages/ProductsPage');
 const CartPage = require('../pages/CartPage');
@@ -54,7 +57,7 @@ const test = base.extend({
 
 
 // ============================================================
-// GLOBAL TIMEOUT FOR TEST + AI FAILURE INVESTIGATION
+// TIMEOUT
 // ============================================================
 
 test.setTimeout(
@@ -67,31 +70,11 @@ test.setTimeout(
 
 // ============================================================
 // AGENTIC AI FAILURE INVESTIGATION
-//
-// PASS:
-// No AI call
-//
-// FAIL:
-// Playwright Error
-//      ↓
-// FailureInvestigationAgent
-//      ↓
-// MCP Tools
-//      ↓
-// Ollama
-//      ↓
-// Grounded RCA
-//      ↓
-// Playwright Attachment
 // ============================================================
 
 test.afterEach(async ({}, testInfo) => {
 
-    // --------------------------------------------------------
-    // Run AI investigation ONLY when actual status
-    // differs from expected status
-    // --------------------------------------------------------
-
+    // Run only when actual result differs from expected result
     if (
         testInfo.status ===
         testInfo.expectedStatus
@@ -121,9 +104,9 @@ test.afterEach(async ({}, testInfo) => {
 
     try {
 
-        // ----------------------------------------------------
-        // CAPTURE REAL PLAYWRIGHT FAILURE INFORMATION
-        // ----------------------------------------------------
+        // ====================================================
+        // CAPTURE PLAYWRIGHT FAILURE
+        // ====================================================
 
         const errorMessage =
             testInfo.error?.message ||
@@ -151,28 +134,13 @@ test.afterEach(async ({}, testInfo) => {
         };
 
 
-        // ----------------------------------------------------
-        // CREATE AGENT
-        // ----------------------------------------------------
+        // ====================================================
+        // START FAILURE INVESTIGATION AGENT
+        // ====================================================
 
         const agent =
             new FailureInvestigationAgent();
 
-
-        // ----------------------------------------------------
-        // START AGENTIC INVESTIGATION
-        //
-        // Agent:
-        // Reason
-        //   ↓
-        // MCP Tool
-        //   ↓
-        // Observation
-        //   ↓
-        // Reason Again
-        //   ↓
-        // Final RCA
-        // ----------------------------------------------------
 
         const analysis =
             await agent.investigate(
@@ -180,9 +148,9 @@ test.afterEach(async ({}, testInfo) => {
             );
 
 
-        // ----------------------------------------------------
-        // PRINT RCA
-        // ----------------------------------------------------
+        // ====================================================
+        // PRINT FINAL RCA
+        // ====================================================
 
         console.log(
             '\nFINAL AGENTIC AI RCA'
@@ -201,19 +169,121 @@ test.afterEach(async ({}, testInfo) => {
         );
 
 
-        // ----------------------------------------------------
+        // ====================================================
+        // CREATE AI REPORT DIRECTORY
+        // ====================================================
+
+        const reportDirectory =
+            path.join(
+                process.cwd(),
+                'reports',
+                'agentic-ai-analysis'
+            );
+
+
+        fs.mkdirSync(
+            reportDirectory,
+            {
+                recursive: true
+            }
+        );
+
+
+        // ====================================================
+        // CREATE SAFE RCA FILE NAME
+        // ====================================================
+
+        const safeTestName =
+            testInfo.title.replace(
+                /[^a-zA-Z0-9-_]/g,
+                '_'
+            );
+
+
+        const reportFile =
+            path.join(
+                reportDirectory,
+                `${safeTestName}.txt`
+            );
+
+
+        // ====================================================
+        // BUILD RCA REPORT
+        // ====================================================
+
+        const reportContent = `
+PWT_EU - AGENTIC AI FAILURE INVESTIGATION
+=========================================
+
+TEST NAME:
+${testInfo.title}
+
+TEST FILE:
+${testInfo.file}
+
+BROWSER:
+${testInfo.project.name}
+
+STATUS:
+${testInfo.status}
+
+
+-----------------------------------------
+PLAYWRIGHT ERROR
+-----------------------------------------
+
+${errorMessage}
+
+
+-----------------------------------------
+STACK TRACE
+-----------------------------------------
+
+${stackTrace}
+
+
+-----------------------------------------
+AGENTIC AI RCA
+-----------------------------------------
+
+${analysis}
+
+
+=========================================
+AI Provider : Ollama
+Model       : ${process.env.OLLAMA_MODEL || 'llama3.2:3b'}
+MCP Enabled : Yes
+Agent       : FailureInvestigationAgent
+=========================================
+`;
+
+
+        // ====================================================
+        // SAVE RCA AS TXT
+        // ====================================================
+
+        fs.writeFileSync(
+            reportFile,
+            reportContent,
+            'utf8'
+        );
+
+
+        console.log(
+            `Agentic AI analysis saved: ${reportFile}`
+        );
+
+
+        // ====================================================
         // ATTACH RCA TO PLAYWRIGHT REPORT
-        // ----------------------------------------------------
+        // ====================================================
 
         await testInfo.attach(
             'Agentic AI Failure Investigation',
             {
 
-                body:
-                    Buffer.from(
-                        analysis,
-                        'utf8'
-                    ),
+                path:
+                    reportFile,
 
                 contentType:
                     'text/plain'
@@ -229,13 +299,7 @@ test.afterEach(async ({}, testInfo) => {
 
     catch (error) {
 
-        // ----------------------------------------------------
-        // IMPORTANT
-        //
-        // AI/MCP/Ollama failure must never replace
-        // the original Playwright failure.
-        // ----------------------------------------------------
-
+        // AI failure must never replace original Playwright failure
         console.error(
             'Agentic AI investigation failed:',
             error.message
