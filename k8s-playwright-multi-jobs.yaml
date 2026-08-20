@@ -18,6 +18,18 @@ spec:
             - name: ENV
               value: "__ENV__"
 
+            - name: OLLAMA_URL
+              value: "http://host.docker.internal:11434"
+
+            - name: OLLAMA_MODEL
+              value: "llama3.2:3b"
+
+            - name: AGENT_MAX_STEPS
+              value: "3"
+
+            - name: AI_FAILURE_TIMEOUT_MS
+              value: "180000"
+
           command:
             - /bin/bash
             - -c
@@ -33,7 +45,7 @@ spec:
               echo "Smoke execution completed."
               echo "Keeping Pod alive for artifact collection..."
 
-              sleep 300
+              sleep 25
 
               exit $TEST_EXIT
 
@@ -60,6 +72,18 @@ spec:
           env:
             - name: ENV
               value: "__ENV__"
+
+            - name: OLLAMA_URL
+              value: "http://host.docker.internal:11434"
+
+            - name: OLLAMA_MODEL
+              value: "llama3.2:3b"
+
+            - name: AGENT_MAX_STEPS
+              value: "3"
+
+            - name: AI_FAILURE_TIMEOUT_MS
+              value: "180000"
 
           command:
             - /bin/bash
