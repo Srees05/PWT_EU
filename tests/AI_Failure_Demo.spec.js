@@ -1,6 +1,6 @@
 const { test, expect } = require('../fixtures/CustomFixtures');
 
-test('AI Failure Analyzer Demo', async ({ page }) => {
+test('AI Failure Analyzer Demo @regression', async ({ page }) => {
 
     await page.goto('https://www.saucedemo.com/');
 
