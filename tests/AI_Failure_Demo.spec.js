@@ -1,5 +1,4 @@
-const { test } = require('../fixtures/AIFixture');
-const { expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures/CustomFixtures');
 
 test('AI Failure Analyzer Demo', async ({ page }) => {
 

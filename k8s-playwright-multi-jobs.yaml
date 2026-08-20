@@ -1,3 +1,33 @@
+# ============================================================
+# PWT_EU - PLAYWRIGHT KUBERNETES MULTI-JOB EXECUTION
+#
+# Jenkins
+#    |
+#    +---- Smoke Job
+#    |
+#    +---- Regression Job
+#
+# Each Job:
+# Playwright
+#    ↓
+# Test Failure
+#    ↓
+# CustomFixtures
+#    ↓
+# FailureInvestigationAgent
+#    ↓
+# MCP
+#    ↓
+# Ollama / Llama 3.2
+#    ↓
+# Agentic AI RCA
+# ============================================================
+
+
+# ============================================================
+# JOB 1 - SMOKE TESTS
+# ============================================================
+
 apiVersion: batch/v1
 kind: Job
 
@@ -5,53 +35,151 @@ metadata:
   name: pwt-eu-smoke-job
 
 spec:
+
+  # Do not retry failed Playwright Job automatically.
+  # A failed test should remain visible as a real failure.
+  backoffLimit: 0
+
   template:
+
+    metadata:
+      labels:
+        app: pwt-eu
+        suite: smoke
+
     spec:
+
       restartPolicy: Never
 
       containers:
+
         - name: pwt-eu-smoke
+
+          # Docker image pushed by Jenkins to local registry
           image: localhost:5000/pwt-eu:latest
-          imagePullPolicy: IfNotPresent
+
+          # Always pull latest image.
+          # Important because we are using the "latest" tag.
+          imagePullPolicy: Always
+
+
+          # ==================================================
+          # ENVIRONMENT VARIABLES
+          # ==================================================
 
           env:
+
+            # Application environment
             - name: ENV
               value: "__ENV__"
 
+
+            # ------------------------------------------------
+            # OLLAMA
+            # ------------------------------------------------
+
+            # Ollama runs on Windows host.
+            # Kubernetes Pod accesses it through Docker host.
             - name: OLLAMA_URL
               value: "http://host.docker.internal:11434"
 
+
+            # Local LLM
             - name: OLLAMA_MODEL
               value: "llama3.2:3b"
 
-            - name: AGENT_MAX_STEPS
-              value: "3"
 
+            # ------------------------------------------------
+            # AGENTIC AI
+            # ------------------------------------------------
+
+            # Maximum reasoning / investigation steps.
+            #
+            # 2 is sufficient for CI:
+            # Step 1 -> discover/read evidence
+            # Step 2 -> additional investigation
+            # Then -> final RCA
+            - name: AGENT_MAX_STEPS
+              value: "2"
+
+
+            # Allows enough time for:
+            #
+            # Playwright Failure
+            #      ↓
+            # MCP
+            #      ↓
+            # Ollama
+            #      ↓
+            # Final RCA
+            #
+            # 240000 ms = 4 minutes
             - name: AI_FAILURE_TIMEOUT_MS
-              value: "180000"
+              value: "240000"
+
+
+          # ==================================================
+          # PLAYWRIGHT EXECUTION
+          # ==================================================
 
           command:
             - /bin/bash
             - -c
             - |
+
+              echo "========================================"
+              echo "PWT_EU - SMOKE EXECUTION"
+              echo "========================================"
+
+              echo "Environment : __ENV__"
+              echo "Browser     : __BROWSER__"
+              echo "Workers     : __WORKERS__"
+
+              echo "Starting Playwright Smoke tests..."
+
+
               npx playwright test \
                 --project=__BROWSER__ \
                 --grep "@smoke" \
                 --workers=__WORKERS__ \
                 --reporter=blob
 
+
+              # Save actual Playwright exit code
               TEST_EXIT=$?
 
+
+              echo ""
               echo "Smoke execution completed."
-              echo "Keeping Pod alive for artifact collection..."
+              echo "Playwright exit code: $TEST_EXIT"
 
-              sleep 25
 
+              # ------------------------------------------------
+              # IMPORTANT
+              #
+              # Jenkins needs time to:
+              #
+              # kubectl cp blob-report
+              # kubectl cp Agentic AI RCA
+              #
+              # Therefore keep Pod alive temporarily.
+              # ------------------------------------------------
+
+              echo "Keeping Smoke Pod alive for artifact collection..."
+
+              sleep 60
+
+
+              # Return original Playwright result
               exit $TEST_EXIT
 
-  backoffLimit: 0
+
 
 ---
+
+# ============================================================
+# JOB 2 - REGRESSION TESTS
+# ============================================================
 
 apiVersion: batch/v1
 kind: Job
@@ -60,48 +188,114 @@ metadata:
   name: pwt-eu-regression-job
 
 spec:
+
+  # Do not automatically retry a failed Playwright Job.
+  backoffLimit: 0
+
   template:
+
+    metadata:
+      labels:
+        app: pwt-eu
+        suite: regression
+
     spec:
+
       restartPolicy: Never
 
       containers:
+
         - name: pwt-eu-regression
+
+          # Same Docker image as Smoke execution
           image: localhost:5000/pwt-eu:latest
-          imagePullPolicy: IfNotPresent
+
+          # Avoid Kubernetes using an old cached "latest" image.
+          imagePullPolicy: Always
+
+
+          # ==================================================
+          # ENVIRONMENT VARIABLES
+          # ==================================================
 
           env:
+
+            # Application environment
             - name: ENV
               value: "__ENV__"
+
+
+            # ------------------------------------------------
+            # OLLAMA
+            # ------------------------------------------------
 
             - name: OLLAMA_URL
               value: "http://host.docker.internal:11434"
 
+
             - name: OLLAMA_MODEL
               value: "llama3.2:3b"
 
+
+            # ------------------------------------------------
+            # AGENTIC AI
+            # ------------------------------------------------
+
             - name: AGENT_MAX_STEPS
-              value: "3"
+              value: "2"
+
 
             - name: AI_FAILURE_TIMEOUT_MS
-              value: "180000"
+              value: "240000"
+
+
+          # ==================================================
+          # PLAYWRIGHT EXECUTION
+          # ==================================================
 
           command:
             - /bin/bash
             - -c
             - |
+
+              echo "========================================"
+              echo "PWT_EU - REGRESSION EXECUTION"
+              echo "========================================"
+
+              echo "Environment : __ENV__"
+              echo "Browser     : __BROWSER__"
+              echo "Workers     : __WORKERS__"
+
+              echo "Starting Playwright Regression tests..."
+
+
               npx playwright test \
                 --project=__BROWSER__ \
                 --grep "@regression" \
                 --workers=__WORKERS__ \
                 --reporter=blob
 
+
+              # Save actual Playwright exit code
               TEST_EXIT=$?
 
+
+              echo ""
               echo "Regression execution completed."
-              echo "Keeping Pod alive for artifact collection..."
+              echo "Playwright exit code: $TEST_EXIT"
 
-              sleep 25
 
+              # ------------------------------------------------
+              # Keep Pod alive so Jenkins can collect:
+              #
+              # 1. Playwright Blob report
+              # 2. Agentic AI RCA files
+              # ------------------------------------------------
+
+              echo "Keeping Regression Pod alive for artifact collection..."
+
+              sleep 60
+
+
+              # Return original Playwright result
               exit $TEST_EXIT
-
-  backoffLimit: 0

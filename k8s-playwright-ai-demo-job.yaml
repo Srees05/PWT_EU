@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: Job
+
+metadata:
+  name: pwt-eu-ai-demo-job
+
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: pwt-eu-ai-demo
+          image: localhost:5000/pwt-eu:latest
+          imagePullPolicy: Always
+
+          env:
+            - name: ENV
+              value: "qa"
+
+            - name: OLLAMA_URL
+              value: "http://host.docker.internal:11434"
+
+            - name: OLLAMA_MODEL
+              value: "llama3.2:3b"
+
+            - name: AGENT_MAX_STEPS
+              value: "2"
+
+            - name: AI_FAILURE_TIMEOUT_MS
+              value: "240000"
+
+          command:
+            - /bin/bash
+            - -c
+            - |
+              npx playwright test tests/AI_Failure_Demo.spec.js \
+                --project=chromium \
+                --workers=1
+
+              TEST_EXIT=$?
+
+              echo "AI Demo execution completed."
+              echo "Keeping Pod alive for artifact collection..."
+
+              sleep 60
+
+              exit $TEST_EXIT
+
+  backoffLimit: 0
