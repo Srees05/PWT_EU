@@ -47,9 +47,7 @@ pipeline {
 
         stage('Verify Kubernetes') {
             steps {
-
                 bat 'kubectl get nodes'
-
             }
         }
 
@@ -60,9 +58,7 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-
                 bat 'docker build -t pwt-eu .'
-
             }
         }
 
@@ -77,13 +73,12 @@ pipeline {
                 bat 'docker tag pwt-eu:latest %IMAGE_NAME%'
 
                 bat 'docker push %IMAGE_NAME%'
-
             }
         }
 
 
         // =====================================================
-        // 5. DELETE OLD KUBERNETES JOBS
+        // 5. CLEANUP OLD KUBERNETES JOBS
         // =====================================================
 
         stage('Cleanup Old Kubernetes Jobs') {
@@ -92,13 +87,12 @@ pipeline {
                 bat '''
                 kubectl delete job pwt-eu-smoke-job pwt-eu-regression-job --ignore-not-found=true
                 '''
-
             }
         }
 
 
         // =====================================================
-        // 6. GENERATE RUNTIME KUBERNETES YAML
+        // 6. PREPARE RUNTIME KUBERNETES CONFIG
         // =====================================================
 
         stage('Prepare Kubernetes Config') {
@@ -120,20 +114,19 @@ pipeline {
 
 
         // =====================================================
-        // 7. RUN PLAYWRIGHT IN KUBERNETES
+        // 7. RUN TESTS IN KUBERNETES
         // =====================================================
 
         stage('Run Tests in Kubernetes') {
             steps {
 
                 bat 'kubectl apply -f k8s-playwright-runtime.yaml'
-
             }
         }
 
 
         // =====================================================
-        // 8. WAIT FOR PLAYWRIGHT EXECUTION
+        // 8. WAIT UNTIL PLAYWRIGHT EXECUTION FINISHES
         // =====================================================
 
         stage('Wait for Test Completion') {
@@ -258,12 +251,9 @@ pipeline {
                     ).trim()
 
 
-                    // -------------------------------------------------
-                    // AI reports are optional.
-                    //
-                    // If all tests PASS, the directory may not exist.
-                    // Jenkins must NOT fail because of that.
-                    // -------------------------------------------------
+                    // ------------------------------------------------
+                    // SMOKE AI REPORT
+                    // ------------------------------------------------
 
                     def smokeAIExists = bat(
                         script:
@@ -285,6 +275,10 @@ pipeline {
                         echo 'No Smoke Agentic AI RCA generated.'
                     }
 
+
+                    // ------------------------------------------------
+                    // REGRESSION AI REPORT
+                    // ------------------------------------------------
 
                     def regressionAIExists = bat(
                         script:
@@ -343,7 +337,7 @@ pipeline {
 
 
         // =====================================================
-        // 12. VALIDATE KUBERNETES TEST RESULTS
+        // 12. VALIDATE FINAL KUBERNETES JOB STATUS
         // =====================================================
 
         stage('Validate Test Results') {
@@ -352,16 +346,80 @@ pipeline {
 
                 script {
 
-                    // Allow Kubernetes jobs to leave the
-                    // temporary artifact collection window.
-
-                    sleep(
-                        time: 30,
-                        unit: 'SECONDS'
-                    )
+                    echo 'Waiting for Kubernetes Jobs to reach final status...'
 
 
-                    def smokeComplete = bat(
+                    // ------------------------------------------------
+                    // Wait until BOTH jobs reach terminal state
+                    //
+                    // succeeded = 1
+                    // OR
+                    // failed = 1
+                    // ------------------------------------------------
+
+                    timeout(
+                        time: 5,
+                        unit: 'MINUTES'
+                    ) {
+
+                        waitUntil {
+
+                            def smokeSucceeded = bat(
+                                script:
+                                '@kubectl get job pwt-eu-smoke-job -o jsonpath="{.status.succeeded}"',
+                                returnStdout: true
+                            ).trim()
+
+
+                            def smokeFailed = bat(
+                                script:
+                                '@kubectl get job pwt-eu-smoke-job -o jsonpath="{.status.failed}"',
+                                returnStdout: true
+                            ).trim()
+
+
+                            def regressionSucceeded = bat(
+                                script:
+                                '@kubectl get job pwt-eu-regression-job -o jsonpath="{.status.succeeded}"',
+                                returnStdout: true
+                            ).trim()
+
+
+                            def regressionFailed = bat(
+                                script:
+                                '@kubectl get job pwt-eu-regression-job -o jsonpath="{.status.failed}"',
+                                returnStdout: true
+                            ).trim()
+
+
+                            echo "Smoke succeeded      : ${smokeSucceeded}"
+                            echo "Smoke failed         : ${smokeFailed}"
+
+                            echo "Regression succeeded : ${regressionSucceeded}"
+                            echo "Regression failed    : ${regressionFailed}"
+
+
+                            def smokeFinished =
+                                smokeSucceeded == '1' ||
+                                smokeFailed == '1'
+
+
+                            def regressionFinished =
+                                regressionSucceeded == '1' ||
+                                regressionFailed == '1'
+
+
+                            return smokeFinished &&
+                                   regressionFinished
+                        }
+                    }
+
+
+                    // ------------------------------------------------
+                    // BOTH JOBS FINISHED
+                    // ------------------------------------------------
+
+                    def smokeSucceeded = bat(
                         script:
                         '@kubectl get job pwt-eu-smoke-job -o jsonpath="{.status.succeeded}"',
                         returnStdout: true
@@ -375,7 +433,7 @@ pipeline {
                     ).trim()
 
 
-                    def regressionComplete = bat(
+                    def regressionSucceeded = bat(
                         script:
                         '@kubectl get job pwt-eu-regression-job -o jsonpath="{.status.succeeded}"',
                         returnStdout: true
@@ -389,12 +447,20 @@ pipeline {
                     ).trim()
 
 
-                    echo "Smoke succeeded      : ${smokeComplete}"
+                    echo '========================================'
+                    echo 'FINAL KUBERNETES TEST RESULT'
+                    echo '========================================'
+
+                    echo "Smoke succeeded      : ${smokeSucceeded}"
                     echo "Smoke failed         : ${smokeFailed}"
 
-                    echo "Regression succeeded : ${regressionComplete}"
+                    echo "Regression succeeded : ${regressionSucceeded}"
                     echo "Regression failed    : ${regressionFailed}"
 
+
+                    // ------------------------------------------------
+                    // FAILURE PROPAGATION
+                    // ------------------------------------------------
 
                     if (
                         smokeFailed == '1' ||
@@ -408,8 +474,8 @@ pipeline {
 
 
                     if (
-                        smokeComplete != '1' ||
-                        regressionComplete != '1'
+                        smokeSucceeded != '1' ||
+                        regressionSucceeded != '1'
                     ) {
 
                         error(
@@ -433,9 +499,9 @@ pipeline {
 
         always {
 
-            // -------------------------------------------------
-            // Archive Playwright + Agentic AI artifacts
-            // -------------------------------------------------
+            // =================================================
+            // ARCHIVE REPORTS
+            // =================================================
 
             archiveArtifacts(
                 artifacts:
@@ -447,9 +513,9 @@ pipeline {
             )
 
 
-            // -------------------------------------------------
-            // Publish merged Playwright HTML report
-            // -------------------------------------------------
+            // =================================================
+            // PUBLISH PLAYWRIGHT HTML REPORT
+            // =================================================
 
             publishHTML([
 
@@ -473,9 +539,9 @@ pipeline {
             ])
 
 
-            // -------------------------------------------------
-            // Kubernetes Cleanup
-            // -------------------------------------------------
+            // =================================================
+            // CLEAN KUBERNETES
+            // =================================================
 
             echo 'Cleaning Kubernetes Jobs...'
 
