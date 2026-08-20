@@ -33,7 +33,7 @@ spec:
               echo "Playwright execution completed."
               echo "Keeping Pod alive for 5 minutes to collect blob report..."
 
-              sleep 300
+              sleep 25
 
               exit $TEST_EXIT
 
