@@ -12,4 +12,4 @@ results/
 .env.*
 
 # Dependencies
-node_modules/
+node_modules/k8s-playwright-runtime.yaml
