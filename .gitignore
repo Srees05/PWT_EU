@@ -7,9 +7,12 @@ merged-blobs/
 reports/
 results/
 
+# Kubernetes generated runtime configuration
+k8s-playwright-runtime.yaml
+
+# Dependencies
+node_modules/
+
 # Environment / secrets
 .env
 .env.*
-
-# Dependencies
-node_modules/k8s-playwright-runtime.yaml
